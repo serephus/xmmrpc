@@ -1,0 +1,13 @@
+# xmmrpc configuration
+apn=your.apn.here
+
+#ip-fetch-timeout=1
+#nodefaultroute=true
+#metric=1000
+
+# Uncomment to not add modem-provided DNS servers to /etc/resolv.conf
+#noresolv=true
+
+# WWAN interface and RPC port (defaults shown)
+#interface=wwan0
+#rpc-port=/dev/wwan0xmmrpc0

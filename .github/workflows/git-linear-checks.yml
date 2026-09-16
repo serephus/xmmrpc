@@ -1,0 +1,14 @@
+name: "Git linear history check"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  linear-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: serephus/perch@v0.1.0
+        with:
+          feature: ${{ github.head_ref }}
+          base: ${{ github.base_ref }}
