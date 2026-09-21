@@ -1,39 +1,29 @@
 # xmmrpc
 
-Userspace control for the **Intel XMM7360** LTE modem (found in the Fibocom
-L850-GL, e.g. in many ThinkPads and HP EliteBooks), driven by the **in-tree
-`iosm` kernel driver**.
+Userspace RPC control for the **Intel XMM7360** LTE modem (found in the
+Fibocom L850-GL, e.g. in many ThinkPads and HP EliteBooks), driven by the
+in-tree **`iosm`** kernel driver.
 
-This is a from-scratch, RPC-only project. It contains:
-
-- a Python implementation of the firmware RPC protocol used to configure the
-  modem, and
-- a Nix flake with a package and a NixOS module.
-
-Unlike the original [`xmm7360-pci`](https://github.com/xmm7360/xmm7360-pci)
-effort, it does **not** ship an out-of-tree kernel driver. The `iosm` driver
-already supports `8086:7360` and exposes the modem's RPC channel as a WWAN
-control port:
+This is a Rust rewrite of the original Python `xmmrpc`. It speaks the
+reverse-engineered firmware RPC protocol directly over the WWAN control port
+exposed by `iosm`; no out-of-tree kernel module is required.
 
 | Driver | Control interface | Data interface |
 | --- | --- | --- |
 | `iosm` (in-tree) | `/dev/wwan0xmmrpc0` | `wwan0` |
 
+> **Note:** ModemManager is *not* used. It does not support the XMM7360 in RPC
+> mode, so this tool talks to the RPC port itself.
+
 ## Requirements
 
-- Linux with `CONFIG_WWAN` and `CONFIG_IOSM` (both are set in the standard
-  NixOS kernel as of 6.x; the module is `iosm`).
-- Python >= 3.10, `configargparse`, `pyroute2`.
-
-> **Note:** ModemManager is *not* used. As of ModemManager 1.24.2 the XMM7360
-> RPC mode is explicitly unsupported (`Intel XMM7360 in RPC mode not
-> supported`); support only exists on the unreleased development branch. This
-> tool talks to the RPC port directly instead.
+- Linux with `CONFIG_WWAN` and `CONFIG_IOSM`.
+- Root privileges (it opens the RPC control port and configures the network).
 
 ## Usage
 
-Make sure `xmm7360` (the out-of-tree module) is not loaded and let `iosm`
-claim the device:
+Make sure the out-of-tree `xmm7360` module is not loaded and let `iosm` claim
+the device:
 
 ```sh
 sudo modprobe -r xmm7360 2>/dev/null || true
@@ -46,28 +36,44 @@ Then bring the connection up:
 sudo xmmrpc --apn your.apn.here
 ```
 
-or use a configuration file:
+or with a configuration file:
 
 ```sh
-cp xmmrpc.ini.sample xmmrpc.ini   # edit at least the APN
-sudo xmmrpc -c xmmrpc.ini
+cp xmmrpc.toml.example xmmrpc.toml   # edit at least the APN
+sudo xmmrpc --config xmmrpc.toml
 ```
 
-Options (all of which can be placed in `xmmrpc.ini`):
+### Configuration
 
-| Option | Description |
+Configuration is a TOML file. Without `--config` the tool looks for
+`./xmmrpc.toml`, then `/etc/xmmrpc.toml`. Command-line flags override the file,
+which overrides the built-in defaults.
+
+| Key | Flag | Default | Description |
+| --- | --- | --- | --- |
+| `apn` | `-a`, `--apn` | — | Network provider APN (required). |
+| `interface` | `-i`, `--interface` | `wwan0` | WWAN interface created by `iosm`. |
+| `rpc_port` | `--rpc-port` | `/dev/wwan0xmmrpc0` | RPC control port. |
+| `default_route` | `--default-route <bool>` | `true` | Install the modem as the default route. |
+| `metric` | `-m`, `--metric` | `1000` | Default route metric (higher is lower priority). |
+| `ip_fetch_interval` | `-t`, `--ip-fetch-interval` | `1` | Seconds between address queries. |
+| `ip_wait` | `--ip-wait` | `120` | Seconds to wait for an address. |
+| `write_resolv` | `--write-resolv <bool>` | `true` | Append modem DNS servers to the resolver config. |
+| `resolv_conf` | `--resolv-conf` | `/etc/resolv.conf` | Resolver configuration file. |
+| `datachannel_path` | `--datachannel-path` | `/sioscc/PCIE/IOSM/IPS/0` | Firmware data-channel path. |
+
+### Exit codes
+
+| Code | Meaning |
 | --- | --- |
-| `-a`, `--apn` | Network provider APN (required). |
-| `-i`, `--interface` | WWAN interface created by `iosm` (default `wwan0`). |
-| `--rpc-port` | RPC control port (default `/dev/wwan0xmmrpc0`). |
-| `-n`, `--nodefaultroute` | Do not install the modem as the default route. |
-| `-m`, `--metric` | Metric for the default route (default `1000`). |
-| `-t`, `--ip-fetch-timeout` | Retry interval while waiting for an address. |
-| `-r`, `--noresolv` | Do not append modem-provided DNS servers to `/etc/resolv.conf`. |
+| `0` | Success. |
+| `1` | Hard failure (bad configuration, missing interface, I/O error, …). |
+| `2` | No connectivity: the network refused the attach or never assigned an address. |
 
-The service exits with status `2` when the network refuses the attach or never
-assigns an address (usually no data allowance or a wrong APN). This is a normal
-"no connectivity" condition, not a firmware failure.
+Exit code `2` is an ordinary "no data allowance or wrong APN" condition, not a
+firmware failure.
+
+### SIM PIN
 
 If the SIM has a PIN enabled, unlock it first, e.g.:
 
@@ -75,7 +81,17 @@ If the SIM has a PIN enabled, unlock it first, e.g.:
 echo 'AT+CPIN="0000"' | sudo tee /dev/wwan0at0
 ```
 
-## NixOS
+## Nix
+
+```sh
+nix build            # build the binary
+nix develop          # Rust dev shell (rustc, cargo, clippy, rustfmt, rust-analyzer, nextest, taplo)
+```
+
+### NixOS
+
+The flake ships a `services.xmmrpc` module. It loads `iosm`, restarts the
+service after resume, and waits for the RPC port before configuring the modem.
 
 ```nix
 {
@@ -95,8 +111,7 @@ echo 'AT+CPIN="0000"' | sudo tee /dev/wwan0at0
             autoStart = true;
             settings = {
               apn = "3gnet";
-              nodefaultroute = false;
-              noresolv = true;
+              writeResolv = true;
             };
           };
         }
@@ -106,32 +121,28 @@ echo 'AT+CPIN="0000"' | sudo tee /dev/wwan0at0
 }
 ```
 
-The module loads `iosm` and provides a `xmmrpc.service`. The service is
-restarted after suspend/resume, because the modem has no power management
-support and must be reconfigured.
+The module exposes a top-level `enable`/`autoStart`/`package` and a typed
+`settings` submodule. The Nix options use camelCase; they map to the
+snake_case TOML keys above.
 
-### Options
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `settings.apn` | string | *required* | Network provider APN. |
+| `settings.interface` | string | `wwan0` | WWAN interface created by `iosm`. |
+| `settings.rpcPort` | string | `/dev/wwan0xmmrpc0` | RPC control port. |
+| `settings.defaultRoute` | bool | `true` | Install the modem as the default route. |
+| `settings.metric` | unsigned int | `1000` | Default route metric (higher is lower priority). |
+| `settings.ipFetchInterval` | positive int | `1` | Seconds between address queries. |
+| `settings.ipWait` | positive int | `120` | Seconds to wait for an address. |
+| `settings.writeResolv` | bool | `true` | Append modem DNS servers to the resolver config. |
+| `settings.resolvConf` | string | `/etc/resolv.conf` | Resolver configuration file. |
+| `settings.datachannelPath` | string | `/sioscc/PCIE/IOSM/IPS/0` | Firmware data-channel path. |
 
-- `services.xmmrpc.enable` — enable the driver/service.
-- `services.xmmrpc.autoStart` — start the service at boot (default `false`).
-- `services.xmmrpc.settings` — flat attribute set written to `xmmrpc.ini`.
-- `services.xmmrpc.package` — override the package.
-
-### Flake outputs
-
-- `packages.<system>.xmmrpc` (also `default`) — the Python application.
-- `overlays.default` — adds `xmmrpc` to nixpkgs.
-- `nixosModules.default` — the NixOS module.
-
-## Development
-
-```sh
-nix develop      # dev shell with python, uv, ruff, black, basedpyright
-pip install -e '.[dev]'
-pytest
-ruff check .
-black --check .
-```
+| Option | Default | Description |
+| --- | --- | --- |
+| `enable` | `false` | Enable the module and the systemd service. |
+| `autoStart` | `false` | Start the service on boot (`multi-user.target`). |
+| `package` | `null` | Override the `xmmrpc` package; `null` builds the one shipped with the flake. |
 
 ## License
 

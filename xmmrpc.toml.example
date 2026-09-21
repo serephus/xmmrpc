@@ -1,0 +1,34 @@
+# xmmrpc configuration.
+#
+# Copy to xmmrpc.toml (or /etc/xmmrpc.toml) and edit at least the APN.
+# Command-line flags override these values; these values override the defaults.
+
+# Network provider APN (required).
+apn = "your.apn.here"
+
+# WWAN interface created by iosm.
+# interface = "wwan0"
+
+# XMM RPC control port.
+# rpc_port = "/dev/wwan0xmmrpc0"
+
+# Install the modem as the default route.
+# default_route = true
+
+# Default route metric (higher is lower priority).
+# metric = 1000
+
+# Seconds between attempts to fetch the assigned IP address.
+# ip_fetch_interval = 1
+
+# Seconds to wait for the network to assign an address.
+# ip_wait = 120
+
+# Append modem-provided DNS servers to the resolver configuration.
+# write_resolv = true
+
+# Resolver configuration file.
+# resolv_conf = "/etc/resolv.conf"
+
+# Firmware data-channel path.
+# datachannel_path = "/sioscc/PCIE/IOSM/IPS/0"
