@@ -93,7 +93,7 @@ echo 'AT+CPIN="0000"' | sudo tee /dev/wwan0at0
           services.xmmrpc = {
             enable = true;
             autoStart = true;
-            config = {
+            settings = {
               apn = "3gnet";
               nodefaultroute = false;
               noresolv = true;
@@ -106,15 +106,15 @@ echo 'AT+CPIN="0000"' | sudo tee /dev/wwan0at0
 }
 ```
 
-The module loads `iosm`, blacklists the out-of-tree `xmm7360` driver, and
-provides a `xmmrpc.service`. The service is restarted after suspend/resume,
-because the modem has no power management support and must be reconfigured.
+The module loads `iosm` and provides a `xmmrpc.service`. The service is
+restarted after suspend/resume, because the modem has no power management
+support and must be reconfigured.
 
 ### Options
 
 - `services.xmmrpc.enable` — enable the driver/service.
 - `services.xmmrpc.autoStart` — start the service at boot (default `false`).
-- `services.xmmrpc.config` — flat attribute set written to `xmmrpc.ini`.
+- `services.xmmrpc.settings` — flat attribute set written to `xmmrpc.ini`.
 - `services.xmmrpc.package` — override the package.
 
 ### Flake outputs
