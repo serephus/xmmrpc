@@ -12,7 +12,7 @@ let
       pkgs.callPackage ./package.nix { };
 
   xmmrpcConfigFile =
-    pkgs.writeText "xmmrpc.ini" (lib.generators.toKeyValue { } cfg.config);
+    pkgs.writeText "xmmrpc.ini" (lib.generators.toKeyValue { } cfg.settings);
 in
 {
   options.services.xmmrpc = {
@@ -24,7 +24,7 @@ in
       description = "Start the modem configuration service on boot.";
     };
 
-    config = mkOption {
+    settings = mkOption {
       type = with types; attrsOf (oneOf [ bool int str ]);
       default = { };
       example = {
@@ -51,16 +51,15 @@ in
 
   config = mkIf cfg.enable {
     assertions = [{
-      assertion = cfg.config ? apn;
+      assertion = cfg.settings ? apn;
       message = ''
-        services.xmmrpc.config must contain an `apn` attribute, e.g.
-        `services.xmmrpc.config.apn = "your.apn.here";`.
+        services.xmmrpc.settings must contain an `apn` attribute, e.g.
+        `services.xmmrpc.settings.apn = "your.apn.here";`.
       '';
     }];
 
     # The in-tree `iosm` driver claims the same PCI device (8086:7360).
     boot.kernelModules = [ "iosm" ];
-    boot.blacklistedKernelModules = [ "xmm7360" ];
 
     # The modem has no power management support: it powers off during suspend
     # and has to be reconfigured when the machine resumes.
