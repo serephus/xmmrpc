@@ -1,21 +1,7 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
 /.direnv
-
-# Virtual environments
-/.venv
-/venv
-
-# Nix
 /result
-/result-*
 
-# Tooling caches
-.pytest_cache/
-.ruff_cache/
+
+# Added by cargo
+
+/target
