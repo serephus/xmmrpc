@@ -1,9 +1,21 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   cfg = config.services.xmmrpc;
 
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib)
+    mkEnableOption
+    mkIf
+    mkOption
+    types
+    ;
+
+  toml = pkgs.formats.toml { };
 
   xmmrpcPackage =
     if cfg.package != null then
@@ -11,8 +23,21 @@ let
     else
       pkgs.callPackage ./package.nix { };
 
-  xmmrpcConfigFile =
-    pkgs.writeText "xmmrpc.ini" (lib.generators.toKeyValue { } cfg.settings);
+  # The Rust tool reads snake_case TOML keys; the Nix options use camelCase.
+  xmmrpcConfig = {
+    apn = cfg.settings.apn;
+    interface = cfg.settings.interface;
+    rpc_port = cfg.settings.rpcPort;
+    default_route = cfg.settings.defaultRoute;
+    metric = cfg.settings.metric;
+    ip_fetch_interval = cfg.settings.ipFetchInterval;
+    ip_wait = cfg.settings.ipWait;
+    write_resolv = cfg.settings.writeResolv;
+    resolv_conf = cfg.settings.resolvConf;
+    datachannel_path = cfg.settings.datachannelPath;
+  };
+
+  xmmrpcConfigFile = toml.generate "xmmrpc.toml" xmmrpcConfig;
 in
 {
   options.services.xmmrpc = {
@@ -24,40 +49,79 @@ in
       description = "Start the modem configuration service on boot.";
     };
 
-    settings = mkOption {
-      type = with types; attrsOf (oneOf [ bool int str ]);
-      default = { };
-      example = {
-        apn = "3gnet";
-        nodefaultroute = false;
-        noresolv = true;
+    settings = {
+      apn = mkOption {
+        type = types.str;
+        example = "3gnet";
+        description = "Network provider APN.";
       };
-      description = ''
-        xmmrpc.ini configuration written as a flat attribute set. Supported
-        keys are the arguments of `xmmrpc` (e.g. `apn`, `nodefaultroute`,
-        `metric`, `ip-fetch-timeout`, `noresolv`). `apn` is required.
-      '';
+
+      interface = mkOption {
+        type = types.str;
+        default = "wwan0";
+        description = "WWAN network interface created by iosm.";
+      };
+
+      rpcPort = mkOption {
+        type = types.str;
+        default = "/dev/wwan0xmmrpc0";
+        description = "XMM RPC control port.";
+      };
+
+      defaultRoute = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Install the modem as the default route.";
+      };
+
+      metric = mkOption {
+        type = types.ints.unsigned;
+        default = 1000;
+        description = "Default route metric (higher is lower priority).";
+      };
+
+      ipFetchInterval = mkOption {
+        type = types.ints.positive;
+        default = 1;
+        description = "Seconds between attempts to fetch the assigned IP address.";
+      };
+
+      ipWait = mkOption {
+        type = types.ints.positive;
+        default = 120;
+        description = "Seconds to wait for the network to assign an address.";
+      };
+
+      writeResolv = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Append modem-provided DNS servers to the resolver configuration.";
+      };
+
+      resolvConf = mkOption {
+        type = types.str;
+        default = "/etc/resolv.conf";
+        description = "Resolver configuration file to append DNS servers to.";
+      };
+
+      datachannelPath = mkOption {
+        type = types.str;
+        default = "/sioscc/PCIE/IOSM/IPS/0";
+        description = "Firmware data-channel path.";
+      };
     };
 
     package = mkOption {
       type = types.nullOr types.package;
       default = null;
       description = ''
-        xmmrpc package to use. If left as `null`, the package is built from
-        this flake.
+        xmmrpc package to use. If left as `null`, the package shipped with this
+        module is built.
       '';
     };
   };
 
   config = mkIf cfg.enable {
-    assertions = [{
-      assertion = cfg.settings ? apn;
-      message = ''
-        services.xmmrpc.settings must contain an `apn` attribute, e.g.
-        `services.xmmrpc.settings.apn = "your.apn.here";`.
-      '';
-    }];
-
     # The in-tree `iosm` driver claims the same PCI device (8086:7360).
     boot.kernelModules = [ "iosm" ];
 
@@ -75,29 +139,28 @@ in
       preStart = ''
         i=0
         while [ "$i" -lt 60 ]; do
-          if [ -e /dev/wwan0xmmrpc0 ]; then
+          if [ -e ${lib.escapeShellArg cfg.settings.rpcPort} ]; then
             exit 0
           fi
           sleep 1
           i=$((i + 1))
         done
-        echo "timed out waiting for /dev/wwan0xmmrpc0" >&2
+        echo "timed out waiting for ${cfg.settings.rpcPort}" >&2
         exit 1
       '';
 
       script = ''
-        exec ${xmmrpcPackage}/bin/xmmrpc -c ${xmmrpcConfigFile}
+        exec ${xmmrpcPackage}/bin/xmmrpc --config ${xmmrpcConfigFile}
       '';
 
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        # After a reset the modem can take a while to register and attach;
-        # kill it only once it is clearly not coming back.
+        # After a reset the modem can take a while to register and attach.
         TimeoutStartSec = "3min";
         Restart = "on-failure";
         RestartSec = "30s";
-        # Exit code 2 means "the network never gave us an IP" (usually no data
+        # Exit code 2 means the network never gave us an IP (usually no data
         # allowance/credit). That is not a firmware hang, so don't reset and
         # reload the modem over and over for it.
         RestartPreventExitStatus = [ 2 ];

@@ -1,0 +1,32 @@
+[package]
+name = "xmmrpc"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+description = "Userspace RPC control for Intel XMM7360 (Fibocom L850-GL) modems driven by the in-tree iosm driver"
+license = "GPL-2.0 OR BSD-3-Clause"
+
+[lib]
+name = "xmmrpc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "xmmrpc"
+path = "src/main.rs"
+
+[dependencies]
+futures-util = "0.3"
+libc = "0.2"
+palc = "0.0.2"
+rtnetlink = "0.23"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "net", "rt"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+strip = true
