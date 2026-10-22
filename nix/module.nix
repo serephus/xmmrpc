@@ -126,8 +126,14 @@ in
     boot.kernelModules = [ "iosm" ];
 
     # The modem has no power management support: it powers off during suspend
-    # and has to be reconfigured when the machine resumes.
+    # and has to be reconfigured when the machine resumes. The firmware can also
+    # come back in the core-dump-ready phase (A-CD_READY), where iosm refuses to
+    # open the RPC port; reloading the driver resets the modem and re-downloads
+    # the firmware, which is the only way out of that phase.
     powerManagement.resumeCommands = ''
+      ${pkgs.iproute2}/bin/ip link set ${lib.escapeShellArg cfg.settings.interface} down 2>/dev/null || true
+      ${pkgs.kmod}/bin/modprobe -r iosm 2>/dev/null || true
+      ${pkgs.kmod}/bin/modprobe iosm 2>/dev/null || true
       ${pkgs.systemd}/bin/systemctl --no-block try-restart xmmrpc.service
     '';
 
