@@ -18,7 +18,7 @@ path = "src/main.rs"
 futures-util = "0.3"
 libc = "0.2"
 palc = "0.0.2"
-rtnetlink = "0.23"
+rtnetlink = "0.24"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
 thiserror = "2"
