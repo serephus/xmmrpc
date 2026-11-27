@@ -8,11 +8,18 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.cachix.inputs.nixpkgs.follows = "nixpkgs";
+      inputs.cachix.inputs.git-hooks.inputs.gitignore.follows = "crate2nix/pre-commit-hooks/gitignore";
+    };
     nixit = {
       url = "github:serephus/nixit";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
       inputs.rust-overlay.follows = "rust-overlay";
+      inputs.crate2nix.follows = "crate2nix";
     };
   };
 
@@ -21,6 +28,7 @@
       nixpkgs,
       flake-utils,
       nixit,
+      crate2nix,
       rust-overlay,
       ...
     }:
@@ -119,7 +127,11 @@
           ];
         };
 
-        xmmrpc = pkgs.callPackage ./nix/package.nix { };
+        cargoNix = crate2nix.tools.${system}.appliedCargoNix {
+          name = "xmmrpc";
+          src = ./.;
+        };
+        xmmrpc = cargoNix.rootCrate.build;
       in
       {
         packages.default = xmmrpc;
